@@ -1,0 +1,111 @@
+---
+title: "Deleting messages"
+description: "The deletion process, real-time progress tracking, and how rate limits are handled."
+---
+
+<Warning>
+  Deleted messages are permanently removed from Discord and cannot be recovered.
+</Warning>
+
+Once you click **Delete selected**, Deleo starts a background deletion process and streams live progress to the UI.
+
+## How deletion works
+
+The backend runs `runDeletionProcess()`, which iterates over each selected channel in order:
+
+1. `MessageSearcher.searchChannelMessages()` fetches all of your messages in the channel using Discord's search API.
+2. `MessageDeleter.deleteMessages()` sends a `DELETE` request for each message, one at a time, waiting the configured delay between each request.
+3. Events and progress updates are streamed to the frontend via `sendToWebview()`.
+4. When all channels are processed, a `deletionComplete` event is sent with the final totals.
+
+```typescript
+for (const channelId of channelIds) {
+  if (currentDeleter?.isStopped()) break;
+
+  // 1. search for messages
+  const messages = await searcher.searchChannelMessages(channelId, authorId);
+
+  // 2. delete each message
+  await currentDeleter?.deleteMessages(channelId, messages, (event) => {
+    sendToWebview("deletionEvent", event);
+    sendToWebview("deletionProgress", { deleted, failed, total, current, percentage });
+  });
+
+  // 3. signal channel done
+  sendToWebview("deletionEvent", { type: "channel_complete", channelId });
+}
+
+// 4. signal all done
+sendToWebview("deletionComplete", { totalDeleted, totalFailed, stopped });
+```
+
+## Progress tracking
+
+The deletion screen shows real-time progress data drawn from `DeletionProgress`:
+
+| Field | Description |
+|-------|-------------|
+| `deleted` | Number of messages successfully deleted |
+| `failed` | Number of messages that could not be deleted |
+| `total` | Total number of messages found for the current channel |
+| `current` | Messages processed so far (`deleted + failed`) |
+| `percentage` | `Math.round((current / total) * 100)` |
+
+A progress bar, percentage label, and ETA are updated after every event. The current channel name and a count of remaining channels are shown above the bar.
+
+## Deletion events
+
+Every action during deletion produces a `DeletionEvent` streamed to the frontend:
+
+```typescript
+export interface DeletionEvent {
+  type: "message_deleted" | "message_failed" | "channel_complete" | "error";
+  channelId: string;
+  messageId?: string;
+  messageContent?: string; // truncated to 50 chars
+  error?: string;
+  deleted?: number;
+  failed?: number;
+}
+```
+
+| Event type | When it fires |
+|------------|---------------|
+| `message_deleted` | A message was successfully deleted |
+| `message_failed` | A delete request failed (rate limit or other error) |
+| `channel_complete` | All messages in a channel have been processed |
+| `error` | A search error occurred for a channel |
+
+Each event is added to the live feed shown at the bottom of the deletion screen. The feed keeps the 65 most recent entries.
+
+## Rate limit handling
+
+Discord returns HTTP `429 Too Many Requests` when you exceed the rate limit. The `RATELIMIT` error string in the response triggers a longer pause:
+
+```typescript
+if (error.message.includes("RATELIMIT")) {
+  // emit a message_failed event for this message
+  onEvent({ type: "message_failed", error: "ratelimit", ... });
+
+  // wait 5 seconds before continuing
+  await this.sleep(5000);
+} else {
+  onEvent({ type: "message_failed", error: "unknown", ... });
+}
+```
+
+In addition to the 5-second rate-limit pause, Deleo waits the configured **delete delay** (500ms–3s) after every successful deletion to reduce the frequency of rate-limit responses.
+
+<Note>
+  Rate-limited messages are counted as `failed` in the stats panel. They are not retried — Deleo continues to the next message after the 5-second pause.
+</Note>
+
+## Status indicators
+
+The header badge shows the current state of the deletion process:
+
+| Status | Meaning |
+|--------|---------|
+| `scanning` | Deleo is searching for messages in the current channel |
+| `deleting` | Messages are being deleted |
+| `stopped` | Deletion was halted by the user |

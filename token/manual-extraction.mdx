@@ -1,0 +1,82 @@
+---
+title: "Manual token extraction"
+description: "Extract your Discord token manually using browser developer tools."
+---
+
+If you cannot or do not want to run the token helper script, you can extract your Discord token directly from browser DevTools. This method works on any operating system.
+
+<Warning>
+  Your Discord token is equivalent to your password. Anyone who has it can access your account with full permissions. Never share it with anyone, do not paste it into untrusted applications, and do not commit it to version control.
+</Warning>
+
+## Steps
+
+<Steps>
+  <Step title="Open Discord in your browser">
+    Go to [discord.com/app](https://discord.com/app) and log in to your account if you are not already logged in.
+
+    Use the web version of Discord, not the desktop app. The network requests made by the web client are visible in the browser's DevTools.
+  </Step>
+
+  <Step title="Open DevTools">
+    Open your browser's developer tools:
+
+    - **Windows / Linux** — press `F12` or `Ctrl+Shift+I`
+    - **macOS** — press `Cmd+Option+I`
+
+    The DevTools panel will open, usually docked to the right or bottom of the browser window.
+  </Step>
+
+  <Step title="Go to the Network tab">
+    Click the **Network** tab at the top of the DevTools panel.
+
+    If the network log is empty, make sure **Preserve log** is checked so requests are not cleared between navigations.
+  </Step>
+
+  <Step title="Send a message in Discord">
+    In the Discord interface, send any message to any channel or DM. This triggers a network request that includes your authorization header.
+
+    You should see new entries appear in the Network log immediately after sending the message.
+  </Step>
+
+  <Step title="Find the authorization header">
+    In the Network tab, look for a request to a URL containing `discord.com/api`. Click on it to open the request details.
+
+    Go to the **Headers** section of the request. Under **Request Headers**, find the `authorization` header. Its value is your Discord token.
+
+    The token is a multi-part string that looks like this:
+
+    ```text
+    MTIzNDU2Nzg5MDEyMzQ1Njc4.GaBcDe.xYzAbCdEfGhIjKlMnOpQrStUvWxYzAbCdEfG
+    ```
+
+    It consists of three dot-separated parts. The full string — including all three parts — is your token.
+
+    <Note>
+      Some tokens start with `MT` followed by the rest of the string. Copy the entire value exactly as it appears.
+    </Note>
+  </Step>
+
+  <Step title="Copy the token value">
+    Click on the value of the `authorization` header to select it, then copy it (`Ctrl+C` or `Cmd+C`).
+
+    Do not copy any surrounding whitespace or quotes.
+  </Step>
+</Steps>
+
+## Enter the token in Deleo
+
+Once you have copied your token:
+
+1. Open Deleo
+2. On the authentication screen, select **Enter manually**
+3. Paste your token into the token field
+4. Click **Login** to validate and continue
+
+### Save for faster login
+
+Deleo gives you the option to save the token you entered. If you enable this, the token is written to `~/.deleo_cached_token` on your machine. On your next launch, you can select **Auto-detect** instead of pasting the token again.
+
+<Warning>
+  Saving your token writes it as plain text to your home directory. Make sure your machine is not shared with other users, and do not check that file into version control.
+</Warning>

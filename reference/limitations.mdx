@@ -1,0 +1,77 @@
+---
+title: "Limitations"
+description: "Known limitations and constraints of Deleo."
+---
+
+<Warning>
+  Using self-bots violates Discord's Terms of Service. Excessive use may result in your account being permanently banned. Use Deleo at your own risk.
+</Warning>
+
+## Platform support
+
+Windows is the primary target platform. Deleo may run on other operating systems, but the experience is not guaranteed.
+
+The Electrobun framework has a known bug on non-Windows platforms where the `maximize` function enters a true full-screen mode with no way to un-maximize. This causes the drag region to become click-through and removes the native rounded corners on borderless windows. Development and testing are done exclusively on Windows.
+
+## Message deletion scope
+
+Deleo can only delete messages that your account has permission to delete — in practice, this means **your own messages**. You cannot delete messages sent by other users, even if you are a server administrator.
+
+The deletion process uses your user token to call `DELETE /channels/{channelId}/messages/{messageId}` for each message found by the search query. Discord enforces permission checks server-side on every request.
+
+## Channel access requirement
+
+Deleo searches for messages using Discord's channel search API endpoint:
+
+```text
+GET /channels/{channelId}/messages/search?author_id={authorId}
+```
+
+If you no longer have access to a channel — because you left a server, were removed, or the channel was deleted — the search request will fail and no messages from that channel can be found or deleted.
+
+## Rate limiting
+
+Discord enforces rate limits on API requests. When a `DELETE` request returns HTTP `429 Too Many Requests`, Deleo:
+
+1. Records the message as `failed` in the progress counter
+2. Waits **5 seconds** before continuing to the next message
+3. Does **not** retry the failed message
+
+To reduce the frequency of rate-limit responses, Deleo inserts a configurable delay (500ms–3s) after every successful deletion. Even with these measures, heavy usage can trigger rate limits and, over time, attract attention from Discord's automated systems.
+
+<Note>
+  Rate-limited messages are counted as `failed` and skipped. They are not retried later in the same session.
+</Note>
+
+## Account ban risk
+
+Using Deleo — or any tool that automates actions with a user token — is classified as a "self-bot" by Discord and violates their Terms of Service. Discord may suspend or permanently ban your account if automated behavior is detected. This risk increases with:
+
+- High deletion volume in a short period
+- Using very short deletion delays
+- Repeated sessions across many channels
+
+## Installer requirement
+
+Electrobun does not support compiling to a standalone `.exe`. Distributing Deleo requires Electrobun's custom installer format. You cannot produce a single portable executable from the build output.
+
+The recommended way to run Deleo is directly from source:
+
+```bash
+git clone https://github.com/kars1996/deleo.git
+cd deleo
+bun install
+bun run dev
+```
+
+## Hot reload in development
+
+Hot reload is broken in the version of Electrobun used by Deleo. During development, any change to the backend or frontend requires a full restart of `bun run dev`. This slows down the development feedback loop compared to frameworks like Tauri or Electron.
+
+## Date range filtering
+
+Deleo does not support filtering messages by date range. The search query sent to Discord's API only filters by `author_id`. All messages you authored in a channel are fetched and queued for deletion — there is no way to restrict deletion to a specific time period from within the app.
+
+## Sequential channel processing
+
+Channels are processed one at a time in the order they are selected. Deleo does not delete from multiple channels in parallel. If deletion is stopped mid-session, channels that have not yet been reached will not be processed.

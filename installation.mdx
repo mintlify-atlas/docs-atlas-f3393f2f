@@ -1,0 +1,61 @@
+---
+title: "Installation"
+description: "Install Deleo and get it running on your machine."
+---
+
+## Prerequisites
+
+Before you install Deleo, make sure you have the following:
+
+- **[Bun](https://bun.sh/)** runtime installed
+- **[Git](https://git-scm.com/)** to clone the repository
+- **Windows** — Windows is the primary target platform. Deleo may work on macOS or Linux, but these platforms are not officially supported.
+
+<Note>
+  Deleo requires a Discord token to authenticate. After installation, follow the [token helper guide](/token/token-helper) to get yours.
+</Note>
+
+## Setup
+
+<Steps>
+  <Step title="Clone the repository">
+    Clone the Deleo repository from GitHub and navigate into the project directory:
+
+    ```bash
+    git clone https://github.com/kars1996/deleo.git
+    cd deleo
+    ```
+  </Step>
+
+  <Step title="Install dependencies">
+    Install all required packages using Bun:
+
+    ```bash
+    bun install
+    ```
+  </Step>
+
+  <Step title="Run in development mode">
+    Start Deleo using the development command:
+
+    ```bash
+    bun run dev
+    ```
+
+    The application window will open. You're ready to authenticate and start deleting messages.
+
+    <Tip>
+      If you encounter SSL certificate errors during development, use the following command instead:
+
+      ```bash
+      bun run dev:nossl
+      ```
+
+      This sets `NODE_TLS_REJECT_UNAUTHORIZED=0` to bypass SSL verification. Only use this in development.
+    </Tip>
+  </Step>
+</Steps>
+
+## Platform support
+
+Windows is the primary development and test target for Deleo. The application may run on macOS or Linux, but you may encounter issues with window behavior, native rendering, or other platform-specific functionality that has not been tested or fixed.

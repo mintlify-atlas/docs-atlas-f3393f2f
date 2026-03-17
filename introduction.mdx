@@ -1,0 +1,73 @@
+---
+title: "Introduction"
+description: "Deleo is an open source desktop application for bulk deleting your Discord messages from DMs, group chats, and servers."
+---
+
+<Warning>
+  Using self-bots violates Discord's Terms of Service. Use Deleo at your own risk. You are solely responsible for any consequences, including account suspension or banning.
+</Warning>
+
+## What is Deleo?
+
+Deleo is a desktop GUI application built with [Electrobun](https://blackboard.sh/electrobun) that lets you delete your Discord messages in bulk. It provides a native desktop experience with real-time progress tracking, adjustable deletion speed, and support for DMs, group chats, and servers.
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Get Deleo installed and running on your machine
+  </Card>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Delete your first batch of messages in minutes
+  </Card>
+  <Card title="Token Setup" icon="key" href="/token/token-helper">
+    Learn how to get your Discord token
+  </Card>
+  <Card title="Usage Guide" icon="book" href="/usage/authentication">
+    Explore all of Deleo's features
+  </Card>
+</CardGroup>
+
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Auto-detect token" icon="magnifying-glass">
+    Automatically extracts your Discord token from browser cache — no manual copying required
+  </Card>
+  <Card title="Multi-channel deletion" icon="trash">
+    Delete messages from DMs, group chats, and servers all in one session
+  </Card>
+  <Card title="Adjustable speed" icon="gauge">
+    Control deletion delay from 500ms to 3 seconds to manage rate limiting
+  </Card>
+  <Card title="Real-time progress" icon="chart-line">
+    Live feed showing deleted messages, failures, and overall progress per channel
+  </Card>
+  <Card title="Stop anytime" icon="circle-stop">
+    Halt the deletion process at any point — nothing runs uncontrolled
+  </Card>
+  <Card title="Token caching" icon="floppy-disk">
+    Save your token to `~/.deleo_cached_token` for faster login on subsequent runs
+  </Card>
+</CardGroup>
+
+## How it works
+
+Deleo uses a two-process architecture powered by Electrobun:
+
+- **Bun backend** — handles Discord API calls, token management, message searching, and deletion logic
+- **React frontend** — provides the desktop UI with real-time event updates from the backend via RPC
+
+The backend communicates with Discord's API v9 to search for and delete your messages, respecting rate limits by introducing configurable delays between each deletion.
+
+## Tech stack
+
+| Component | Technology |
+|-----------|-----------|
+| Desktop runtime | [Electrobun](https://blackboard.sh/electrobun) |
+| Backend | [Bun](https://bun.sh/) + TypeScript |
+| Frontend | React 18 + TypeScript |
+| Styling | Tailwind CSS |
+| Token extraction | Python script |
+
+## Disclaimer
+
+Deleo interacts with Discord's API using your personal user token, which is considered a "self-bot" and violates Discord's Terms of Service. This project is provided for educational purposes. Use responsibly, and be aware that excessive use may result in your account being banned.

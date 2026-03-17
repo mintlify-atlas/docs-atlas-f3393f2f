@@ -1,0 +1,132 @@
+---
+title: "Token helper script"
+description: "Use the included Python script to automatically extract your Discord token."
+---
+
+<Tip>
+  This is the easiest way to get your Discord token. The script scans your installed browsers and Discord clients and saves the token for you automatically.
+</Tip>
+
+The `token-helper.py` script scans browser and Discord client storage on your machine, extracts any Discord tokens it finds, validates them against the Discord API, and optionally saves the result to a cache file that Deleo reads on startup.
+
+## What the script does
+
+When you run `token-helper.py`, it:
+
+1. Searches the local storage databases of all supported browsers and Discord clients
+2. Decrypts tokens that are stored in encrypted form using Windows DPAPI and AES-GCM
+3. Validates each candidate token by calling `GET /api/v9/users/@me`
+4. Prints the discovered accounts with a truncated token preview
+5. If `--save` is passed, writes the first found token to `~/.deleo_cached_token`
+
+### Supported sources
+
+The script checks all of the following:
+
+- **Discord clients** — Discord (stable), Discord Canary, Discord PTB, Lightcord
+- **Chromium browsers** — Google Chrome, Microsoft Edge, Brave, Opera, Opera GX, Vivaldi, Yandex Browser
+- **Firefox** — scans SQLite profile storage
+
+## Dependencies
+
+The script requires Python 3.8 or later and the following packages:
+
+```text requirements.txt
+pycryptodome>=3.19.0
+pywin32>=306
+httpx>=0.25.0
+```
+
+- **pycryptodome** — AES-GCM decryption for tokens stored in Chromium-based browsers
+- **pywin32** — Windows DPAPI decryption (`CryptUnprotectData`) to unwrap the browser encryption key
+- **httpx** — HTTP client used to validate tokens against the Discord API
+
+<Warning>
+  These packages use Windows-specific APIs (`pywin32` and DPAPI). The script only works on Windows.
+</Warning>
+
+## Steps
+
+<Steps>
+  <Step title="Navigate to the scripts directory">
+    From the root of the Deleo repository:
+
+    ```bash
+    cd scripts
+    ```
+  </Step>
+
+  <Step title="Install Python dependencies">
+    Install the required packages from `requirements.txt`:
+
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+    If pip reports that `pycryptodome` or `pywin32` cannot be installed, make sure you are running Python 3.8 or later on Windows.
+  </Step>
+
+  <Step title="Run the token helper">
+    Run the script with the `--save` flag to extract your token and save it for Deleo:
+
+    ```bash
+    python token-helper.py --save
+    ```
+
+    The script will scan for Discord accounts and print something like:
+
+    ```text
+    scanning for discord tokens...
+
+    found 1 account(s):
+
+    [1] Your Name (@yourusername)
+        id: 123456789012345678
+        source: discord
+        token: MTIzNDU2Nzg5MDEy...(truncated)
+
+    token saved to C:\Users\You\.deleo_cached_token
+    deleo will use this token automatically on next launch
+    ```
+  </Step>
+</Steps>
+
+## What `--save` does
+
+Passing `--save` writes the first discovered token as plain text to `~/.deleo_cached_token` (for example, `C:\Users\You\.deleo_cached_token` on Windows).
+
+On the next launch, Deleo's `AuthManager` reads this file automatically:
+
+```typescript auth-manager.ts
+const TOKEN_FILE = join(homedir(), ".deleo_cached_token");
+
+loadCachedToken(): string | null {
+  if (existsSync(TOKEN_FILE)) {
+    const token = readFileSync(TOKEN_FILE, "utf-8").trim();
+    this.token = token;
+    return token;
+  }
+  return null;
+}
+```
+
+When you select **Auto-detect** on the Deleo authentication screen, it calls `loadCachedToken()` and pre-fills your token without you having to paste it manually.
+
+## Other script modes
+
+You can also run the script without `--save` to inspect what was found, or pass additional flags:
+
+```bash
+# scan and print all accounts (no save)
+python token-helper.py
+
+# output results as JSON
+python token-helper.py --json
+
+# validate a specific token you already have
+python token-helper.py --token YOUR_TOKEN_HERE
+```
+
+<Warning>
+  The script reads directly from browser and Discord application storage files. Close the Discord desktop client before running the script — open Discord clients may lock their storage files and prevent the scan from reading them.
+</Warning>

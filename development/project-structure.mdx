@@ -1,0 +1,96 @@
+---
+title: "Project structure"
+description: "How the Deleo codebase is organized."
+---
+
+Deleo is split into two main processes — a Bun backend and a React frontend — connected by Electrobun's RPC system. This page walks through every directory and explains its role.
+
+## Directory tree
+
+```
+src/
+├── bun/                   # Bun process (backend)
+│   ├── handlers/
+│   │   └── rpc-handlers.ts
+│   ├── channel-utils.ts
+│   ├── webview-utils.ts
+│   ├── window.ts
+│   └── index.ts
+├── mainview/              # React UI (frontend)
+│   ├── hooks/
+│   │   ├── useDiscordAuth.ts
+│   │   └── useDeletion.ts
+│   ├── utils/
+│   │   └── avatar.ts
+│   └── components/
+├── lib/
+│   └── core/              # Discord API client classes
+│       ├── discord-client.ts
+│       ├── auth-manager.ts
+│       ├── message-searcher.ts
+│       └── message-deleter.ts
+└── types/
+scripts/                   # Python token helper
+├── token-helper.py
+└── requirements.txt
+```
+
+## Source directories
+
+<CardGroup cols={2}>
+  <Card title="src/bun/" icon="server">
+    The Bun backend process. Initializes the Electrobun window, registers all RPC handlers, and communicates with the Discord API. This is the entry point Electrobun launches.
+  </Card>
+  <Card title="src/mainview/" icon="window">
+    The React frontend rendered in Electrobun's webview. Handles all UI state, view transitions, and user interaction. Communicates with the backend exclusively via RPC.
+  </Card>
+  <Card title="src/lib/core/" icon="cube">
+    Framework-agnostic Discord API client classes. These are shared utilities that can be used by any part of the backend without depending on Electrobun or Bun-specific APIs.
+  </Card>
+  <Card title="scripts/" icon="terminal">
+    A Python helper script (`token-helper.py`) that automatically extracts your Discord token from a running Discord client or browser cache and saves it to `~/.deleo_cached_token`.
+  </Card>
+</CardGroup>
+
+## Backend: `src/bun/`
+
+The backend is a Bun process that Electrobun manages. It owns all Discord API interaction and pushes events to the frontend over RPC.
+
+| File | Purpose |
+|------|---------|
+| `index.ts` | Entry point. Creates the `BrowserWindow`, registers all RPC request and message handlers, and stores a reference to the webview for push events. |
+| `handlers/rpc-handlers.ts` | All RPC handler functions — `handleValidateToken`, `handleGetChannels`, `handleStartDeletion`, `handleStopDeletion`, and others. |
+| `channel-utils.ts` | Utilities for normalizing raw `DiscordChannel` objects into the `ChannelInfo` shape the frontend consumes (type classification, label, avatar color). |
+| `webview-utils.ts` | A thin wrapper around Electrobun's `sendMessageToWebviewViaExecute` that lets any part of the backend push named events to the frontend. |
+| `window.ts` | Creates the `BrowserWindow` with title bar and transparency settings, and resolves the correct URL (Vite dev server or bundled `views://` URL). |
+
+## Frontend: `src/mainview/`
+
+The frontend is a React 18 application built with Vite. It renders inside Electrobun's webview and never calls Discord's API directly.
+
+| Directory | Purpose |
+|-----------|---------|
+| `hooks/` | Custom React hooks that encapsulate RPC calls. `useDiscordAuth` manages token validation and channel loading. `useDeletion` manages the deletion lifecycle and listens for backend events. |
+| `utils/` | Pure utility functions. `avatar.ts` handles Discord CDN avatar URL construction. |
+| `components/` | All UI components, organized by type: `layout/`, `ui/`, `views/`, and `features/`. |
+
+The top-level `App.tsx` manages the five view states (`auth`, `scan`, `channels`, `deleting`, `done`) and wires the two hooks together.
+
+## Core library: `src/lib/core/`
+
+These classes implement all Discord API interaction. They have no dependency on Electrobun and can be used or tested independently.
+
+| File | Class | Role |
+|------|-------|------|
+| `discord-client.ts` | `DiscordClient` | Low-level HTTP client for Discord API v9. Wraps every response in a `Result<T, Error>` from `@sapphire/result`. |
+| `auth-manager.ts` | `AuthManager` | Validates tokens, stores the active token and user in memory, and reads/writes `~/.deleo_cached_token`. |
+| `message-searcher.ts` | `MessageSearcher` | Paginates through Discord's message search endpoint to collect all messages by a given author in a channel. |
+| `message-deleter.ts` | `MessageDeleter` | Iterates over a list of messages, deletes each one, emits `DeletionEvent` callbacks, and handles rate-limit back-off. |
+
+## Configuration files
+
+| File | Purpose |
+|------|---------|
+| `electrobun.config.ts` | Electrobun build configuration — app name, bundle identifier (`bio.kars.deleo`), and the copy map that places Vite's `dist/` output into `views/mainview/`. |
+| `vite.config.ts` | Vite configuration — sets `src/mainview` as the project root, outputs to `../../dist`, and defines the `@` path alias. |
+| `tsconfig.json` | TypeScript configuration shared across both processes. Targets ES2020 with strict mode enabled. |

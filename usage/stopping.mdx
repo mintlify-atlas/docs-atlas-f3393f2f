@@ -1,0 +1,81 @@
+---
+title: "Stopping deletion"
+description: "How to stop an in-progress deletion and what happens to your data when you do."
+---
+
+You can stop the deletion process at any time by clicking the **Stop** button in the deletion screen header. Deleo halts after the current in-flight message request completes — it does not interrupt an active HTTP request mid-flight.
+
+## How stopping works
+
+Clicking **Stop** calls `handleStopDeletion()` in the backend RPC handler, which calls `MessageDeleter.stop()`:
+
+```typescript
+// rpc-handlers.ts
+export function handleStopDeletion() {
+  currentDeleter?.stop();
+  return { success: true };
+}
+
+// message-deleter.ts
+stop(): void {
+  this.stopped = true;
+}
+```
+
+The `stopped` flag is checked at the start of each loop iteration in both `runDeletionProcess()` (before starting a new channel) and `deleteMessages()` (before deleting each message):
+
+```typescript
+// stops between channels
+for (const channelId of channelIds) {
+  if (currentDeleter?.isStopped()) break;
+  // ...
+}
+
+// stops between messages
+for (const message of messages) {
+  if (this.stopped) break;
+  // ...
+}
+```
+
+This means:
+
+- The current in-flight `DELETE` request is allowed to complete.
+- No further messages or channels are processed after the current request finishes.
+- Any messages not yet processed are left as-is on Discord.
+
+<Note>
+  The **Stop** button is disabled once the status is already `stopped` to prevent duplicate calls.
+</Note>
+
+## After stopping
+
+Once stopped, the `deletionComplete` event is emitted with `stopped: true`:
+
+```typescript
+sendToWebview("deletionComplete", {
+  totalDeleted: totalDeletedCount,
+  totalFailed: totalFailedCount,
+  stopped: currentDeleter?.isStopped() || false
+});
+```
+
+Deleo then navigates to the **Done** screen, which shows a summary of the session.
+
+## The done screen
+
+Whether deletion completes normally or is stopped, Deleo shows the done screen with the same summary data:
+
+| Field | Description |
+|-------|-------------|
+| `deleted` | Total messages successfully deleted across all channels |
+| `failed` | Total messages that could not be deleted |
+| `channels` | Number of channels that were processed |
+| `wasStopped` | `true` if you clicked Stop, `false` if deletion ran to completion |
+
+The screen title and icon reflect the outcome:
+
+- **All done.** — deletion completed normally (green checkmark)
+- **Stopped.** — you clicked Stop (red stop icon)
+
+From the done screen, click **Start over** to return to the channel-selection screen and begin a new session with the same authenticated account.

@@ -1,0 +1,63 @@
+---
+title: "Channel selection"
+description: "How to choose which channels to delete your messages from, including DMs, group chats, and servers."
+---
+
+After authentication, Deleo fetches all channels where you have sent messages and presents them in the **Channel selection** screen. You can filter by channel type, select one or more channels, and configure deletion settings before starting.
+
+## Channel types
+
+Deleo groups channels into three types:
+
+| Type | Description |
+|------|-------------|
+| **DMs** | Direct message conversations with individual users |
+| **Groups** | Group DM conversations with multiple users |
+| **Servers** | Channels inside Discord servers (guilds) |
+
+Use the **All / DMs / Groups / Servers** segment control at the top of the channel list to filter by type.
+
+## How channel scanning works
+
+When Deleo loads channels after authentication, `handleGetChannels()` in the backend creates a `MessageSearcher` instance and calls `getUserChannels()` to retrieve your accessible channels from the Discord API. Each channel is converted to a `ChannelInfo` object with an `id`, `type`, `label`, `sub`, and `msgs` count.
+
+The `msgs` count shown on each channel is the number of your messages found in that channel via Discord's search API, so you know how much will be deleted before you start.
+
+## Selecting channels
+
+<Steps>
+  <Step title="Review the channel list">
+    The channel list shows all channels where Deleo found your messages. Each entry displays the channel name, type icon, and message count.
+  </Step>
+  <Step title="Filter by type (optional)">
+    Use the **All / DMs / Groups / Servers** segment control to narrow the list. This only affects what is visible — it does not deselect previously selected channels.
+  </Step>
+  <Step title="Toggle channels">
+    Click any channel to select or deselect it. The selected count shown next to the filter control updates in real time. You can select any number of channels across different types.
+  </Step>
+  <Step title="Configure deletion settings">
+    Before starting, configure the two settings below the channel list:
+
+    **Delete delay** — the pause between each individual message deletion:
+
+    | Option | Delay |
+    |--------|-------|
+    | `500ms` | 500 milliseconds |
+    | `1s` | 1 second (default) |
+    | `2s` | 2 seconds |
+    | `3s` | 3 seconds |
+
+    **Batch size** — the number of messages fetched per search request: `25`, `50`, or `100` (default).
+
+    <Note>
+      Higher deletion delays reduce the risk of hitting Discord's rate limits. If you see frequent rate-limit errors during deletion, increase the delay. See [Deleting messages](/usage/deleting-messages) for how rate limits are handled.
+    </Note>
+  </Step>
+  <Step title="Start deletion">
+    Click **Delete selected**. The button is disabled until at least one channel is selected. Deleo passes your selected channel IDs, the delay in milliseconds, and your user ID to the backend to begin the deletion process.
+  </Step>
+</Steps>
+
+<Warning>
+  Message deletion is permanent and cannot be undone. Review your channel selection carefully before clicking **Delete selected**.
+</Warning>

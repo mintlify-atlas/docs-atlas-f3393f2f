@@ -1,0 +1,87 @@
+---
+title: "Authentication"
+description: "How to authenticate Deleo with your Discord account using auto-detect or manual token entry."
+---
+
+<Warning>
+  Your Discord token grants full access to your account. Never share it with anyone or commit it to version control.
+</Warning>
+
+Deleo requires your Discord user token to communicate with the Discord API. On first launch, the **Authentication** screen lets you choose between loading a cached token automatically or entering one manually.
+
+## How authentication works
+
+When you submit the authentication form, Deleo calls `AuthManager.validateToken()`, which creates a `DiscordClient` and calls the Discord API endpoint `GET /users/@me`. If the request succeeds, the returned `DiscordUser` object is stored in memory and the token is retained for the session.
+
+After a successful validation, Deleo immediately fetches your channel list so the channel-selection screen is ready to show.
+
+## Authentication methods
+
+<Tabs>
+  <Tab title="Auto-detect">
+    Auto-detect reads the token from `~/.deleo_cached_token` on your local filesystem. This file is written either by the `token-helper.py` script or by Deleo itself when you previously chose to save your token during manual entry.
+
+    <Steps>
+      <Step title="Select Auto-detect">
+        On the Authentication screen, **Auto-detect** is selected by default. Click **Continue** without changing anything.
+      </Step>
+      <Step title="Token is loaded">
+        Deleo reads `~/.deleo_cached_token`, trims whitespace, and passes the token to `AuthManager.validateToken()`. While this is happening, the UI shows:
+
+        > _Looking for cached token… Checking ~/.deleo\_cached\_token_
+      </Step>
+      <Step title="Token is validated">
+        Deleo calls `GET /users/@me` with the token. If valid, the screen transitions to the channel-selection view. If not, an error is shown and you can try manual entry instead.
+      </Step>
+    </Steps>
+
+    <Note>
+      If no file exists at `~/.deleo_cached_token`, Deleo returns a "No cached token found" error. Use the [token helper](/token/token-helper) to create this file, or switch to manual entry.
+    </Note>
+  </Tab>
+
+  <Tab title="Manual entry">
+    Manual entry lets you paste your token directly into the UI. You can optionally save it to `~/.deleo_cached_token` so auto-detect works on future launches.
+
+    <Steps>
+      <Step title="Select Enter manually">
+        On the Authentication screen, click the **Enter manually** option to switch modes. A password-masked input field and a hint appear:
+
+        > _DevTools → Network → any Discord request → `authorization` header_
+      </Step>
+      <Step title="Paste your token">
+        Paste your Discord token into the input field. The field is masked for security.
+
+        <Tip>
+          You can also use the included `token-helper.py` script to extract your token automatically. See the [token helper guide](/token/token-helper).
+        </Tip>
+      </Step>
+      <Step title="Optionally save for next time">
+        Check **Save token for faster login next time** to write the token to `~/.deleo_cached_token`. On the next launch, auto-detect will find and use it without requiring manual input.
+      </Step>
+      <Step title="Click Continue">
+        Deleo calls `AuthManager.validateToken()` with the token you entered. If the token is valid, it is stored in memory and optionally written to disk via `AuthManager.saveToken()`. The session then proceeds to channel loading.
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
+
+## Token caching
+
+The cache file is `~/.deleo_cached_token` — a plain text file containing just the token string. `AuthManager` reads and writes it using the Node.js `fs` module:
+
+```typescript
+const TOKEN_FILE = join(homedir(), ".deleo_cached_token");
+
+// Reading
+const token = readFileSync(TOKEN_FILE, "utf-8").trim();
+
+// Writing
+writeFileSync(TOKEN_FILE, token);
+```
+
+The token is also cached in memory in `AuthManager`'s `token` property for the duration of the session. All subsequent API calls (channel fetching, message searching, deletion) read the token from this in-memory reference.
+
+<Warning>
+  `~/.deleo_cached_token` is stored as plain text on your filesystem. Ensure the file has appropriate permissions and that no other users or processes can read it.
+</Warning>

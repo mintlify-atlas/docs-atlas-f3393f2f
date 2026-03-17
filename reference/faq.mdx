@@ -1,0 +1,130 @@
+---
+title: "FAQ"
+description: "Frequently asked questions about Deleo."
+---
+
+<AccordionGroup>
+  <Accordion title="Why is my token not being detected automatically?">
+    The auto-detect flow reads a cached token from `~/.deleo_cached_token`. This file is only created when you run the token helper script with the `--save` flag:
+
+    ```bash
+    cd scripts
+    python token-helper.py --save
+    ```
+
+    If the file does not exist, the **Auto-detect** option on the authentication screen will not find a token.
+
+    The token helper script scans the following sources on Windows:
+
+    | Source | Path |
+    |--------|------|
+    | Discord (stable) | `%APPDATA%\discord\Local Storage\leveldb` |
+    | Discord Canary | `%APPDATA%\discordcanary\Local Storage\leveldb` |
+    | Discord PTB | `%APPDATA%\discordptb\Local Storage\leveldb` |
+    | Lightcord | `%APPDATA%\Lightcord\Local Storage\leveldb` |
+    | Google Chrome | `%LOCALAPPDATA%\Google\Chrome\User Data` |
+    | Google Chrome Canary | `%LOCALAPPDATA%\Google\Chrome SxS\User Data` |
+    | Microsoft Edge | `%LOCALAPPDATA%\Microsoft\Edge\User Data` |
+    | Brave | `%LOCALAPPDATA%\BraveSoftware\Brave-Browser\User Data` |
+    | Opera | `%APPDATA%\Opera Software\Opera Stable` |
+    | Opera GX | `%APPDATA%\Opera Software\Opera GX Stable` |
+    | Vivaldi | `%LOCALAPPDATA%\Vivaldi\User Data` |
+    | Yandex Browser | `%LOCALAPPDATA%\Yandex\YandexBrowser\User Data` |
+    | Firefox | `%APPDATA%\Mozilla\Firefox\Profiles` (SQLite) |
+
+    If none of these paths exist or contain a valid Discord token, the script will report that no accounts were found. In that case, use [manual extraction](/token/manual-extraction) instead.
+  </Accordion>
+
+  <Accordion title="Why is deletion slow?">
+    Deleo deliberately inserts a delay between each deletion request to avoid triggering Discord's rate limiter.
+
+    After every **successful** deletion, Deleo waits the configured delete delay (500ms–3s, set in the settings panel before starting). The default is 1000ms.
+
+    When a deletion request is rate-limited (HTTP `429`), Deleo waits an additional **5 seconds** before continuing to the next message — on top of skipping the normal delay for that request.
+
+    These pauses are intentional. Removing them or using the minimum 500ms delay increases the chance of hitting rate limits and may increase the risk of account action from Discord.
+  </Accordion>
+
+  <Accordion title="Can I delete messages in servers I'm not in anymore?">
+    No. Deleo uses Discord's channel search API to find your messages:
+
+    ```text
+    GET /channels/{channelId}/messages/search?author_id={authorId}
+    ```
+
+    If you have left a server or been removed, Discord will reject the search request because your token no longer has access to that channel. Deleo cannot retrieve or delete messages from channels you cannot currently access.
+  </Accordion>
+
+  <Accordion title="What happens if I close the app during deletion?">
+    Closing Deleo mid-deletion stops the process. The `MessageDeleter` checks a `stopped` flag before processing each message in the queue:
+
+    ```typescript
+    for (const message of messages) {
+      if (this.stopped) {
+        break;
+      }
+      // delete message...
+    }
+    ```
+
+    Any message currently in-flight (i.e., a `DELETE` request already sent to Discord) will complete or fail on Discord's side regardless of whether the app is open. Messages that had not yet been processed will not be deleted. There is no resume functionality — the next session will re-scan for remaining messages.
+  </Accordion>
+
+  <Accordion title="Where is my token stored?">
+    If you run the token helper with `--save`, or choose to save your token after entering it manually in Deleo, the token is written as **plain text** to:
+
+    ```text
+    ~/.deleo_cached_token
+    ```
+
+    On Windows this resolves to `C:\Users\YourName\.deleo_cached_token`.
+
+    The file contains only the raw token string with no encryption. Anyone with read access to your home directory can read this file. Delete the file if you want to remove the cached token.
+  </Accordion>
+
+  <Accordion title="Can I delete messages from multiple channels at once?">
+    No. Deleo processes channels sequentially, one at a time. When you start deletion with multiple channels selected, each channel is fully processed (search then delete) before the next one begins.
+
+    You can select as many channels as you want before starting — they will all be processed in the same session, just not in parallel.
+  </Accordion>
+
+  <Accordion title="What does 'failed' mean in the progress counter?">
+    A message is counted as `failed` when Deleo's `DELETE` request for that message does not succeed. There are two failure reasons, both represented as `message_failed` events:
+
+    | Error value | Cause |
+    |-------------|-------|
+    | `ratelimit` | Discord returned HTTP `429`. Deleo waits 5 seconds and continues to the next message. |
+    | `unknown` | Any other non-OK response from Discord (e.g., `403 Forbidden`, `404 Not Found`). |
+
+    In both cases the message is skipped and not retried. The `failed` count in the stats panel reflects the total number of messages that could not be deleted.
+  </Accordion>
+
+  <Accordion title="Is there a way to only delete messages from a specific date range?">
+    No. Date range filtering is not supported. The search query Deleo sends to Discord only filters by `author_id`:
+
+    ```text
+    GET /channels/{channelId}/messages/search?author_id={authorId}&offset={offset}
+    ```
+
+    All messages you authored in the selected channel are fetched and queued for deletion. There is no way to restrict deletion to messages before or after a specific date within Deleo.
+  </Accordion>
+
+  <Accordion title="How do I update Deleo?">
+    Deleo is run from source, so updating is a matter of pulling the latest changes and reinstalling dependencies:
+
+    ```bash
+    git pull
+    bun install
+    ```
+
+    There is no auto-update mechanism. Check the [GitHub repository](https://github.com/kars1996/deleo) for new commits or releases.
+  </Accordion>
+
+  <Accordion title="Why does Deleo violate Discord's Terms of Service?">
+    Deleo authenticates with Discord using your personal user token directly, without going through an authorized OAuth2 application. This makes it a "self-bot" — an automated client acting on behalf of a user account.
+
+    Discord's Terms of Service prohibit self-bots because they automate actions that are only permitted for human users. Approved bots use bot tokens issued through Discord's developer portal and operate under a separate set of rules.
+
+    Because Deleo uses a user token to programmatically send `DELETE` requests, it falls squarely in the self-bot category regardless of intent. Discord may suspend or ban accounts found running self-bots.
+  </Accordion>
+</AccordionGroup>

@@ -1,0 +1,355 @@
+---
+title: "Architecture"
+description: "How Deleo's two-process architecture works — from RPC communication to the Discord API client classes."
+---
+
+Deleo follows Electrobun's two-process model: a **Bun backend** and a **React webview frontend**. The two processes communicate exclusively through Electrobun's typed RPC system.
+
+## Overview
+
+| Layer | Technology | Responsibility |
+|-------|------------|----------------|
+| Backend process | Bun + TypeScript | Discord API calls, token management, message searching and deletion |
+| Frontend process | React 18 + TypeScript | UI rendering, user interaction, displaying live deletion events |
+| IPC bridge | Electrobun RPC | Request/response calls from frontend to backend; push events from backend to frontend |
+
+## Two-process model
+
+```
+┌──────────────────────────────────────────────┐
+│  Bun process (src/bun/)                       │
+│                                              │
+│  index.ts ──► BrowserView.defineRPC()        │
+│       │                                      │
+│       ├──► rpc-handlers.ts                   │
+│       │     handleValidateToken              │
+│       │     handleGetChannels               │
+│       │     handleStartDeletion             │
+│       │     handleStopDeletion              │
+│       │                                      │
+│       └──► lib/core/                         │
+│             DiscordClient                    │
+│             AuthManager                      │
+│             MessageSearcher                  │
+│             MessageDeleter                   │
+└──────────────┬───────────────────────────────┘
+               │  RPC (requests + push events)
+┌──────────────▼───────────────────────────────┐
+│  React webview (src/mainview/)                │
+│                                              │
+│  App.tsx                                     │
+│    useDiscordAuth ──► RPC calls to backend   │
+│    useDeletion    ──► listens for events      │
+└──────────────────────────────────────────────┘
+```
+
+## RPC communication
+
+Electrobun provides a typed RPC system. The backend defines all handlers in `src/bun/index.ts` using `BrowserView.defineRPC<WindowRPCType>()`:
+
+```typescript
+export const rpc = BrowserView.defineRPC<WindowRPCType>({
+  handlers: {
+    requests: {
+      getPlatform:      () => process.platform,
+      loadCachedToken:  handleLoadCachedToken,
+      validateToken:    handleValidateToken,
+      saveToken:        handleSaveToken,
+      getChannels:      handleGetChannels,
+      searchMessages:   handleSearchMessages,
+      startDeletion:    handleStartDeletion,
+      stopDeletion:     handleStopDeletion,
+    },
+    messages: {
+      closeWindow:    () => mainWindow.close(),
+      minimizeWindow: () => mainWindow.minimize(),
+    },
+  },
+});
+```
+
+`requests` are async request/response calls — the frontend awaits a result. `messages` are fire-and-forget calls with no return value.
+
+### RPC handlers
+
+All request handlers live in `src/bun/handlers/rpc-handlers.ts`:
+
+<AccordionGroup>
+  <Accordion title="handleLoadCachedToken">
+    Reads `~/.deleo_cached_token` via `AuthManager` and returns the token string, or `null` if none is saved.
+
+    ```typescript
+    export function handleLoadCachedToken() {
+      const token = authManager.loadCachedToken();
+      return { token };
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="handleValidateToken">
+    Calls Discord's `/users/@me` endpoint with the provided token. On success, stores the user in `AuthManager` and returns the `DiscordUser` object. On failure, returns the error message.
+
+    ```typescript
+    export async function handleValidateToken({ token }: { token: string }) {
+      const result = await authManager.validateToken(token);
+      if (result.isOk()) {
+        const user = result.unwrap();
+        authManager.saveToken(token);
+        return { success: true, user };
+      } else {
+        const error = result.unwrapErr();
+        return { success: false, error: error.message };
+      }
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="handleGetChannels">
+    Fetches the authenticated user's DM channels from Discord (`/users/@me/channels`) and converts each raw `DiscordChannel` into a `ChannelInfo` object the frontend can display.
+
+    ```typescript
+    export async function handleGetChannels() {
+      const token = authManager.getToken();
+      if (!token) return { success: false, error: "No token available" };
+
+      const searcher = new MessageSearcher(token);
+      const result = await searcher.getUserChannels();
+
+      if (result.isErr()) {
+        return { success: false, error: result.unwrapErr().message };
+      }
+
+      const channels = result.unwrap();
+      const channelInfos = channels.map(convertChannel);
+      return { success: true, channels: channelInfos };
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="handleStartDeletion">
+    Creates a `MessageDeleter` instance and immediately returns `{ success: true }` while the deletion loop runs in the background. Progress and events are pushed to the frontend via `sendToWebview`.
+
+    ```typescript
+    export async function handleStartDeletion({
+      channelIds,
+      deleteDelay,
+      authorId,
+    }: {
+      channelIds: string[];
+      deleteDelay: number;
+      authorId: string;
+    }) {
+      const token = authManager.getToken();
+      if (!token) return { success: false, error: "No token available" };
+
+      currentDeleter = new MessageDeleter(token, deleteDelay);
+      runDeletionProcess(channelIds, authorId);
+      return { success: true };
+    }
+    ```
+  </Accordion>
+
+  <Accordion title="handleStopDeletion">
+    Calls `stop()` on the active `MessageDeleter`. The deleter checks `isStopped()` before each deletion, so the loop exits at the next message boundary.
+
+    ```typescript
+    export function handleStopDeletion() {
+      currentDeleter?.stop();
+      return { success: true };
+    }
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Push events (backend → frontend)
+
+Because Electrobun's RPC type system does not natively support push events, the backend uses `sendMessageToWebviewViaExecute` to inject JavaScript into the webview:
+
+```typescript
+// src/bun/webview-utils.ts
+export function sendToWebview(message: string, data: any) {
+  if (mainView && mainView.sendMessageToWebviewViaExecute) {
+    mainView.sendMessageToWebviewViaExecute({ message, data });
+  }
+}
+```
+
+Three event types are emitted during a deletion run:
+
+| Event | When emitted | Payload |
+|-------|-------------|--------|
+| `deletionEvent` | After each individual message delete attempt | `type`, `channelId`, `messageId`, `messageContent`, `deleted`, `failed`, `error` |
+| `deletionProgress` | After each successful or failed deletion | `channelId`, `deleted`, `failed`, `total`, `current`, `percentage` |
+| `deletionComplete` | When all channels have been processed | `totalDeleted`, `totalFailed`, `stopped` |
+
+### Event flow example
+
+```
+backend                              frontend
+  │                                     │
+  │  startDeletion RPC ◄────────────────┤
+  │                                     │
+  │──► searchChannelMessages            │
+  │                                     │
+  │  sendToWebview("deletionEvent") ────►│
+  │  sendToWebview("deletionProgress")──►│
+  │           (per message)             │
+  │                                     │
+  │  sendToWebview("deletionComplete")──►│
+```
+
+## Core library classes
+
+All Discord API logic lives in `src/lib/core/`. These classes are independent of Electrobun.
+
+### `DiscordClient`
+
+Low-level HTTP client for Discord API v9. All methods return `Result<T, Error>` using `@sapphire/result`, so callers handle errors without exceptions.
+
+```typescript
+export class DiscordClient {
+  private token: string;
+  private baseUrl = "https://discord.com/api/v9";
+
+  async getCurrentUser(): Promise<Result<DiscordUser, Error>>
+  async getDMs(): Promise<Result<DiscordChannel[], Error>>
+  async searchMessages(channelId: string, authorId: string, offset?: number): Promise<Result<SearchResult, Error>>
+  async deleteMessage(channelId: string, messageId: string): Promise<Result<void, Error>>
+  async getGuildChannels(guildId: string): Promise<Result<DiscordChannel[], Error>>
+}
+```
+
+Rate limit responses (`HTTP 429`) are detected and re-thrown as `Error("RATELIMIT")` so `MessageDeleter` can apply a 5-second back-off.
+
+### `AuthManager`
+
+A singleton (`authManager`) that holds the active token and user in memory and manages the cache file at `~/.deleo_cached_token`.
+
+```typescript
+export class AuthManager {
+  getToken(): string | null
+  getUser(): DiscordUser | null
+  loadCachedToken(): string | null
+  saveToken(token: string): void
+  async validateToken(token: string): Promise<Result<DiscordUser, Error>>
+  setToken(token: string): void
+  clear(): void
+}
+```
+
+### `MessageSearcher`
+
+Paginates Discord's message search endpoint in batches of 25, waiting 250ms between pages to avoid rate limits. Returns all messages authored by the given user in a channel.
+
+```typescript
+export class MessageSearcher {
+  async searchChannelMessages(
+    channelId: string,
+    authorId: string,
+    onProgress?: (found: number) => void
+  ): Promise<Result<DiscordMessage[], Error>>
+
+  async getUserChannels(): Promise<Result<DiscordChannel[], Error>>
+}
+```
+
+### `MessageDeleter`
+
+Iterates over a list of `DiscordMessage` objects, deletes each one via `DiscordClient`, and emits `DeletionEvent` callbacks. Supports graceful stop via `stop()`.
+
+```typescript
+export class MessageDeleter {
+  constructor(token: string, deleteDelay?: number)
+  stop(): void
+  isStopped(): boolean
+  async deleteMessages(
+    channelId: string,
+    messages: DiscordMessage[],
+    onEvent: (event: DeletionEvent) => void
+  ): Promise<{ deleted: number; failed: number }>
+}
+```
+
+## TypeScript interfaces
+
+### Discord API types
+
+```typescript
+// src/lib/core/discord-client.ts
+
+export interface DiscordUser {
+  id: string;
+  username: string;
+  discriminator: string;
+  avatar: string | null;
+  global_name: string | null;
+}
+
+export interface DiscordChannel {
+  id: string;
+  type: number;
+  name?: string;
+  recipients?: DiscordUser[];
+  icon?: string | null;
+  guild_id?: string;
+}
+
+export interface DiscordMessage {
+  id: string;
+  channel_id: string;
+  author: DiscordUser;
+  content: string;
+  timestamp: string;
+}
+
+export interface SearchResult {
+  messages: DiscordMessage[][];
+  total_results: number;
+}
+```
+
+### Deletion event types
+
+```typescript
+// src/lib/core/message-deleter.ts
+
+export interface DeletionProgress {
+  channelId: string;
+  channelName: string;
+  deleted: number;
+  failed: number;
+  total: number;
+  current: number;
+  percentage: number;
+}
+
+export interface DeletionEvent {
+  type: "message_deleted" | "message_failed" | "channel_complete" | "error";
+  channelId: string;
+  messageId?: string;
+  messageContent?: string;
+  error?: string;
+  deleted?: number;
+  failed?: number;
+}
+```
+
+### Channel info type
+
+`ChannelInfo` is the normalized shape the frontend receives after `convertChannel` processes a raw `DiscordChannel`:
+
+```typescript
+// src/bun/channel-utils.ts
+
+export type ChannelType = "dm" | "group" | "server";
+
+export interface ChannelInfo {
+  id: string;
+  type: ChannelType;
+  label: string;
+  sub: string;
+  msgs: number;
+  avatarColor: string;
+  avatarText: string;
+}
+```

@@ -1,0 +1,143 @@
+---
+title: "Building Deleo"
+description: "How to run Deleo in development and build it for distribution."
+---
+
+Deleo uses [Bun](https://bun.sh/) as its runtime and [Electrobun](https://blackboard.sh/electrobun) as its desktop framework. Building involves two steps: Vite compiles the React frontend, then Electrobun packages the whole application.
+
+<Warning>
+  Deleo cannot be bundled into a standalone `.exe`. Electrobun requires its own custom installer. Distribute the output of `electrobun build`, not a single executable file.
+</Warning>
+
+## Prerequisites
+
+- [Bun](https://bun.sh/) installed
+- Windows (primary target platform)
+
+```bash
+git clone https://github.com/kars1996/deleo.git
+cd deleo
+bun install
+```
+
+## Development
+
+Three development modes are available depending on your workflow:
+
+<CodeGroup>
+
+```bash Standard dev
+bun run dev
+```
+
+```bash Without SSL verification
+bun run dev:nossl
+```
+
+```bash With HMR
+bun run dev:hmr
+```
+
+</CodeGroup>
+
+| Command | What it does |
+|---------|--------------|
+| `bun run dev` | Runs `electrobun dev --watch`. Electrobun launches the app and watches the Bun backend for changes. The webview loads the bundled `views://` URL. |
+| `bun run dev:nossl` | Same as `dev` but sets `NODE_TLS_REJECT_UNAUTHORIZED=0` to disable SSL certificate verification. Use this only if you encounter TLS errors during local development. |
+| `bun run dev:hmr` | Runs the Vite dev server on port 5173 and `electrobun dev` concurrently. The backend detects the running Vite server and loads `http://localhost:5173` instead of the bundled view, enabling hot module replacement for frontend changes. |
+
+<Note>
+  HMR support in Electrobun can be unreliable. If hot reloads are not working, stop and restart with `bun run dev`.
+</Note>
+
+### How the dev URL is resolved
+
+On startup, `src/bun/window.ts` checks the Electrobun channel. In `dev` mode it probes `http://localhost:5173`. If the Vite server is reachable, it uses that URL (HMR). Otherwise it falls back to the bundled `views://mainview/index.html`.
+
+```typescript
+export async function getMainViewUrl(): Promise<string> {
+  const channel = await Updater.localInfo.channel();
+  if (channel === "dev") {
+    try {
+      await fetch(DEV_SERVER_URL, { method: "HEAD" });
+      console.log(`HMR enabled: Using Vite dev server at ${DEV_SERVER_URL}`);
+      return DEV_SERVER_URL;
+    } catch {
+      console.log("Vite dev server not running. Run 'bun run dev:hmr' for HMR support.");
+    }
+  }
+  return "views://mainview/index.html";
+}
+```
+
+## Building for distribution
+
+Two build variants are available: `canary` for pre-release testing and `stable` for production.
+
+<CodeGroup>
+
+```bash Canary
+bun run build:canary
+```
+
+```bash Stable
+bun run build:stable
+```
+
+</CodeGroup>
+
+Both commands run the same two-step process:
+
+<Steps>
+  <Step title="Vite build">
+    Vite compiles and bundles the React frontend from `src/mainview/` into `dist/`. The output is `dist/index.html` and `dist/assets/`.
+
+    ```bash
+    vite build
+    ```
+  </Step>
+
+  <Step title="Electrobun build">
+    Electrobun copies the Vite output into the application bundle at the paths defined in `electrobun.config.ts`, then packages everything:
+
+    ```typescript
+    build: {
+      copy: {
+        "dist/index.html": "views/mainview/index.html",
+        "dist/assets":     "views/mainview/assets",
+      },
+    }
+    ```
+
+    The `--env` flag sets the release channel (`canary` or `stable`), which Electrobun's updater uses to determine the update feed.
+
+    ```bash
+    electrobun build --env=canary
+    # or
+    electrobun build --env=stable
+    ```
+  </Step>
+</Steps>
+
+### Canary vs stable
+
+| Variant | Command | Purpose |
+|---------|---------|--------|
+| `canary` | `bun run build:canary` | Pre-release builds for testing. Sets the Electrobun update channel to `canary`. |
+| `stable` | `bun run build:stable` | Production builds for end users. Sets the Electrobun update channel to `stable`. |
+
+The only difference between the two variants is the `--env` flag passed to `electrobun build`. This controls which update channel the installed app subscribes to.
+
+## Full build reference
+
+```json
+"scripts": {
+  "start":         "vite build && electrobun dev",
+  "dev":           "electrobun dev --watch",
+  "dev:nossl":     "NODE_TLS_REJECT_UNAUTHORIZED=0 electrobun dev --watch",
+  "dev:hmr":       "concurrently \"bun run hmr\" \"bun run start\"",
+  "hmr":           "vite --port 5173",
+  "build:canary":  "vite build && electrobun build --env=canary",
+  "build:stable":  "vite build && electrobun build --env=stable"
+}
+```
