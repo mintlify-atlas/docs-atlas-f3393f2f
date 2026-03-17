@@ -21,7 +21,7 @@ Use the **All / DMs / Groups / Servers** segment control at the top of the chann
 
 When Deleo loads channels after authentication, `handleGetChannels()` in the backend creates a `MessageSearcher` instance and calls `getUserChannels()` to retrieve your accessible channels from the Discord API. Each channel is converted to a `ChannelInfo` object with an `id`, `type`, `label`, `sub`, and `msgs` count.
 
-The `msgs` count shown on each channel is the number of your messages found in that channel via Discord's search API, so you know how much will be deleted before you start.
+The `msgs` field on each channel entry starts at `0` when the channel list is first loaded. The actual count of messages to delete is determined when deletion begins, as `MessageSearcher` pages through Discord's search API at that point.
 
 ## Selecting channels
 
@@ -46,8 +46,6 @@ The `msgs` count shown on each channel is the number of your messages found in t
     | `1s` | 1 second (default) |
     | `2s` | 2 seconds |
     | `3s` | 3 seconds |
-
-    **Batch size** — the number of messages fetched per search request: `25`, `50`, or `100` (default).
 
     <Note>
       Higher deletion delays reduce the risk of hitting Discord's rate limits. If you see frequent rate-limit errors during deletion, increase the delay. See [Deleting messages](/usage/deleting-messages) for how rate limits are handled.

@@ -47,11 +47,12 @@ The deletion screen shows real-time progress data drawn from `DeletionProgress`:
 |-------|-------------|
 | `deleted` | Number of messages successfully deleted |
 | `failed` | Number of messages that could not be deleted |
+| `queued` | Number of messages still waiting to be processed |
 | `total` | Total number of messages found for the current channel |
 | `current` | Messages processed so far (`deleted + failed`) |
 | `percentage` | `Math.round((current / total) * 100)` |
 
-A progress bar, percentage label, and ETA are updated after every event. The current channel name and a count of remaining channels are shown above the bar.
+A progress bar, percentage label, and ETA are updated after every event. The current channel name and a count of remaining channels are shown above the bar. The stats panel below the progress bar always shows `deleted`, `failed`, and `queued` counts.
 
 ## Deletion events
 
