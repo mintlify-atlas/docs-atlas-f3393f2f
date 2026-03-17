@@ -1,0 +1,66 @@
+{
+  "projectType": "saas",
+  "projectName": "Deleo",
+  "projectDescription": "A desktop GUI application for bulk deleting Discord messages from DMs, group chats, and servers.",
+  "theme": "willow",
+  "primaryColor": "#6c6c6c",
+  "lightColor": "#050504",
+  "darkColor": "#d7d3ce",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": ["introduction", "installation", "quickstart"]
+          },
+          {
+            "group": "Usage",
+            "pages": ["usage/authentication", "usage/channel-selection", "usage/deleting-messages", "usage/stopping"]
+          },
+          {
+            "group": "Token Setup",
+            "pages": ["token/token-helper", "token/manual-extraction"]
+          },
+          {
+            "group": "Development",
+            "pages": ["development/project-structure", "development/building", "development/architecture"]
+          },
+          {
+            "group": "Reference",
+            "pages": ["reference/limitations", "reference/faq"]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Auto-detect Discord token from browser cache",
+    "Delete messages from DMs, group chats, and servers",
+    "Adjustable deletion speed (500ms - 3s delay)",
+    "Real-time progress tracking with live feed",
+    "Stop deletion at any time",
+    "Python token-helper script for automatic token extraction",
+    "Built with Electrobun for native desktop experience"
+  ],
+  "publicApiSurface": [
+    "handleLoadCachedToken()",
+    "handleValidateToken({ token })",
+    "handleSaveToken({ token })",
+    "handleGetChannels()",
+    "handleSearchMessages({ channelId, authorId })",
+    "handleStartDeletion({ channelIds, deleteDelay, authorId })",
+    "handleStopDeletion()",
+    "DiscordClient.getCurrentUser()",
+    "DiscordClient.getDMs()",
+    "DiscordClient.searchMessages(channelId, authorId, offset)",
+    "DiscordClient.deleteMessage(channelId, messageId)",
+    "DiscordClient.getGuildChannels(guildId)",
+    "AuthManager.validateToken(token)",
+    "AuthManager.loadCachedToken()",
+    "AuthManager.saveToken(token)",
+    "MessageDeleter.deleteMessages(channelId, messages, onEvent)",
+    "MessageDeleter.stop()"
+  ]
+}
